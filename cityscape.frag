@@ -1,3 +1,4 @@
+#iKeyboard
 #define COLOR_WINDOW vec3(1., .9, .45)
 #define COLOR_WINDOW_TINT vec3(0.9, .3, .1)
 #define COLOR_BUILDING_BASE vec3(0.3,.5, .1)
@@ -9,16 +10,32 @@
 #define MAX_DISTANCE 10.
 #define defaultBaseSize .3
 #define defaultBaseSpacing 2.5
-#define bounds vec3(2.0, 2.0, 0.)
+#define bounds vec3(3.0, 3.0, 0.)
 #define BLD_RECT 1.
 #define BLD_HEX 2.
 #define BLD_TUBE 4.
 #define OBJ_FLOOR 3.
 #define CELL_SIZE (defaultBaseSize + defaultBaseSpacing/2.)
 #define BULDING_BASE_SIZE .4
+#define PI 3.14
 
+vec2 mouse;
+
+struct Camera {
+    float z;
+    float x;
+    float y;
+    float verticalAngle;
+    float horizontalAngle;
+};
+
+Camera camera;
+
+bool isScripted = true;
 
 // #iUniform float my_scalar = 1.0 in { 0.0, 5.0 } // This will expose a slider to edit the value
+
+
 
 struct DistBuilding {
     float d;
@@ -74,22 +91,19 @@ vec3 getColorById(vec3 id) {
 
 vec3 withMouse(vec3 p) {
         vec2 mouse = iMouse.xy/iResolution.xy;
-        float a = mouse.y * 3.14 * 2.;
-        p.yz *= mat2(vec2(sin(a), cos(a)), vec2(-cos(a), sin(a)));
+        float a = max(mouse.y, .505) * 3.14 * 2.;
+        p.yz *= rot2d(a);
         float aa = mouse.x * 3.14 * 2.;
-        p.xy *= mat2(vec2(sin(aa), cos(aa)), vec2(-cos(aa), sin(aa)));
+        p.xy *= rot2d(aa);
         return p;
 }
 
 vec3 setSceneAngle(vec3 p) {
     vec2 mouse = iMouse.xy/iResolution.xy;
-    float a = 3.14;
-    p.yz *= rot2d(a);
-    float horizA = 0. + mouse.x*3.14*2.;
-    p.xy *= rot2d(horizA);
+    p.yz *= rot2d(PI);
+    p.xy *= rot2d(camera.horizontalAngle);
     p -= .77;
-    // p.z += iTime;
-    p.y += sin(iTime/5.)*3.;
+    p += vec3(camera.x, camera.y, camera.z);
     return p;
 }
 
@@ -123,16 +137,6 @@ DistBuilding distBuilding(vec3 q1, vec3 id) {
     float n1 = fract(n*4553.33);
     float n2 = fract(n*145.33);
 
-    float baseSize = defaultBaseSize;
-
-    float h = baseSize;
-
-    h += n*.5;
-    q1.z -= n*.5;
-    q1.z -= defaultBaseSize;
-
-    float d;
-
     float obj = BLD_RECT;
 
     if (n1 > .7) {
@@ -140,6 +144,24 @@ DistBuilding distBuilding(vec3 q1, vec3 id) {
     } else if (n2 > .8) {
         obj = BLD_TUBE;
     }
+
+    float baseSize = defaultBaseSize;
+
+    float h = baseSize;
+
+    if (obj == BLD_TUBE && n1 < .2 ) {
+        n = (sin(q1.x + (n1*50.)) * .5 + .5);
+    }
+
+    float ah = n * .5;
+
+    h += ah;
+    q1.z -= ah;
+    q1.z -= defaultBaseSize;
+
+    float d;
+
+
 
     vec3 size = vec3(baseSize, baseSize, h);
 
@@ -252,9 +274,11 @@ TraceResult trace(vec3 ro, vec3 rd) {
     for(int i = 0 ; i < MAX_STEPS ; i++) {
         p = ro + rd * ds;
 
-
-        p = setSceneAngle(p);
-        // p = withMouse(p);
+        if (isScripted) {
+            p = setSceneAngle(p);
+        } else {
+            p = withMouse(p);
+        }
 
         dist = getDist(p);
 
@@ -480,16 +504,50 @@ vec3 getBuildingTexture(TraceResult tr) {
     return col;
 }
 
+void scriptCamera() {
+    camera.z = (sin(iTime) * .5 + .5) * .3;
+    camera.y = sin(iTime/5.)*3.;
+    float verticalA = 1.;
+    float horizA = 0.;
+    horizA = PI/2.;
+    horizA += sin(iTime)*(PI/8.);
+
+    // verticalA = 1. - sin(iTime);
+
+    camera.horizontalAngle = horizA;
+    camera.verticalAngle = verticalA;
+}
+
+void setupCamera() {
+    camera.x = 0.;
+    camera.y = 0.;
+    camera.z = 0.;
+    scriptCamera();
+}
+
+
+
 void mainImage(out vec4 fragColor, in vec2 fragCoords) {
+
+    mouse = iMouse.xy/iResolution.xy;
+    isScripted = !isKeyDown(Key_Shift);
+
+    setupCamera();
+
     vec2 uv = ((fragCoords.xy / iResolution.xy) - .5) * vec2(iResolution.x / iResolution.y, 1.);
-    vec2 mouse = iMouse.xy/iResolution.xy;
 
     vec3 col = vec3(.0);
 
     float a = 0.;
+
     vec3 ro = vec3(0., 1. , 0.1);
-    vec3 lookat = vec3(0., 1.*(mouse.y + .5), 0.);
-    // lookat.yz *= rot2d(iTime);
+    vec3 lookat = vec3(0., 1.*camera.verticalAngle, 0.);
+
+    if (!isScripted) {
+        ro = vec3(0., 0. , -4.);
+        lookat = vec3(0., 0., 0.);
+    }
+
     float zoom = .5;
 
     vec3 f = normalize(lookat - ro);
