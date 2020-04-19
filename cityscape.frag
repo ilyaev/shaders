@@ -1,4 +1,6 @@
 #iKeyboard
+#define CAMERA_RANGE 4.
+#define CAMERA_TIME_SCALE .1
 #define COLOR_WINDOW vec3(1., .9, .45)
 #define COLOR_WINDOW_TINT vec3(0.9, .3, .1)
 #define COLOR_BUILDING_BASE vec3(0.3,.5, .1)
@@ -520,71 +522,68 @@ vec3 getBuildingTexture(TraceResult tr) {
     return col;
 }
 
-void scriptCamera() {
-    float t = iTime/18.;
-    vec2 f = vec2(0., 0.);
-    vec2 center = vec2(0.);
-
-
-    float iteration = mod(t, 4.);
-    float st = floor(iteration);
-
-    float id = 0.;//floor(t/6.);
-
-    float stepSize = 4.;
-
-    vec2 origin = vec2(id/(1./(CELL_SIZE*stepSize)));
-
-
-
-    if (st == 0.) {
-        f = vec2(1., 0.);
-        center = vec2(0.);
-    } else if (st == 1.) {
-        f = vec2(0., -1);
-        center = vec2(1., 0.);
-    } else if (st == 2.) {
-        f = vec2(-1., 0.);
-        center = vec2(1., -1);
-    } else if (st == 3.) {
-        f = vec2(0., 1.);
-        center = vec2(0., -1);
+vec2 getIterationPosition(float iteration) {
+    if (iteration == 0.) {
+        return vec2(0.);
     }
-    //  else if (st == 4.) {
-    //     f = vec2(0., 1.);
-    //     center = vec2(0., 0.);
-    // } else if (st == 5.) {
-    //     f = vec2(1., 0.);
-    //     center = vec2(0., 1);
-    // }
+    float n = n21(vec2(iteration));
 
-    center = origin + center * CELL_SIZE * stepSize;
+    float m = CAMERA_RANGE;
+    return round(vec2((n - .5) * m, (fract(n*113.43) - .5) * m));
+}
 
-    center += f*fract(t)*CELL_SIZE * stepSize;
+vec2 cameraNextPosition() {
+    float t = iTime * CAMERA_TIME_SCALE;
 
-    camera.x = center.x;
-    camera.y = center.y;
+    vec2 center = vec2(.0);
+
+    float iterationDuration = 1.;
+
+    float iteration = floor(t / iterationDuration) + 1.;
+    float stepSize = 1.;
+
+    vec2 prevPosition = getIterationPosition(iteration - 1.)*CELL_SIZE*stepSize;
+    vec2 nextPosition = getIterationPosition(iteration)*CELL_SIZE*stepSize;
 
 
+    float iterationTime = mod(t, iterationDuration) / iterationDuration;
 
-    // camera.z = (sin(iTime) * .5 + .5) * .3;
-    // camera.y = sin(iTime/2.)*CELL_SIZE;
-    // camera.x = cos(iTime/2.)*CELL_SIZE;
-    // camera.x = sin(iTime/2.)*CELL_SIZE;
-    // camera.z = 3.;
+    float iterationSteps = 2.;
+    float stepDuration = iterationDuration / iterationSteps;
+    float iterationStep = floor(iterationTime / stepDuration) + 1.;
+
+    float iterationStepTime = mod(iterationTime, stepDuration) / stepDuration;
+
+    vec2 f = (nextPosition - prevPosition) * vec2(iterationStepTime);
+
+    if (iterationStep == 1.) {
+        f.y = 0.;
+    } else if (iterationStep == 2.) {
+        prevPosition.x = nextPosition.x;
+        f.x = 0.;
+    }
+
+
+    center = prevPosition + f;
+
+    return center;
+}
+
+void scriptCamera() {
+    float t = iTime / 18.;
+
+    vec2 nextPosition = cameraNextPosition();
+
+    camera.x = nextPosition.x;
+    camera.y = nextPosition.y;
+
     float verticalA = 1.0;
     float horizA = 0.;
-    horizA = t*2.; //PI/2.;// * (f.x - f.y);// + f.x*PI/2.;
+    horizA = t*4.;
 
-    // horizA += atan(camera.x, camera.y);
+    verticalA = 1. - (sin(t*4.)*.02 + .02);
 
-    // horizA += PI/4.;//(mouse.x - .5) * PI * 2.;
-
-    // horizA += sin(iTime)*(PI/8.);
-
-    verticalA = 1. - (sin(t*4.)*.05 + .03);
-
-    // camera.rotation = sin(iTime) * PI/4.;
+    // camera.rotation = sin(iTime) * PI/32.;
 
     camera.horizontalAngle = horizA;
     camera.verticalAngle = verticalA;
@@ -621,7 +620,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoords) {
         lookat = vec3(0., 0., 0.);
     }
 
-    float zoom = .5;
+    float zoom = .9;
     vec3 up = vec3(0., 1., 0.);
     up.xy *= rot2d(PI / 2. + camera.rotation);
 
