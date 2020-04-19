@@ -10,11 +10,12 @@
 #define MAX_DISTANCE 10.
 #define defaultBaseSize .3
 #define defaultBaseSpacing 2.5
-#define bounds vec3(3.0, 3.0, 0.)
+#define bounds vec3(6.0, 6.0, 0.)
 #define BLD_RECT 1.
 #define BLD_HEX 2.
 #define BLD_TUBE 4.
 #define OBJ_FLOOR 3.
+#define OBJ_CAMERA 5.
 #define CELL_SIZE (defaultBaseSize + defaultBaseSpacing/2.)
 #define BULDING_BASE_SIZE .4
 #define PI 3.14
@@ -27,6 +28,7 @@ struct Camera {
     float y;
     float verticalAngle;
     float horizontalAngle;
+    float rotation;
 };
 
 Camera camera;
@@ -102,7 +104,9 @@ vec3 setSceneAngle(vec3 p) {
     vec2 mouse = iMouse.xy/iResolution.xy;
     p.yz *= rot2d(PI);
     p.xy *= rot2d(camera.horizontalAngle);
-    p -= .77;
+    p.x += CELL_SIZE / 2.;
+    p.y += CELL_SIZE / 2.;
+    // p.xy -= .77;
     p += vec3(camera.x, camera.y, camera.z);
     return p;
 }
@@ -249,6 +253,18 @@ DistResult getDist(vec3 p) {
     }
 
     d = min(d, floord);
+
+    if (!isScripted) {
+        vec3 cameraQ = vec3(-p.x + CELL_SIZE / 2., -p.y + CELL_SIZE / 2., p.z-.3) + vec3(camera.x, camera.y, camera.z);
+        cameraQ.xy *= rot2d(-camera.horizontalAngle);
+        float cd = sdBox(cameraQ, vec3(.1, .2, .1));
+        if (cd < d) {
+            p = cameraQ;
+            obj = OBJ_CAMERA;
+        }
+
+        d = min(d, cd);
+    }
 
 
     DistResult r;
@@ -505,14 +521,70 @@ vec3 getBuildingTexture(TraceResult tr) {
 }
 
 void scriptCamera() {
-    camera.z = (sin(iTime) * .5 + .5) * .3;
-    camera.y = sin(iTime/5.)*3.;
-    float verticalA = 1.;
-    float horizA = 0.;
-    horizA = PI/2.;
-    horizA += sin(iTime)*(PI/8.);
+    float t = iTime/18.;
+    vec2 f = vec2(0., 0.);
+    vec2 center = vec2(0.);
 
-    // verticalA = 1. - sin(iTime);
+
+    float iteration = mod(t, 4.);
+    float st = floor(iteration);
+
+    float id = 0.;//floor(t/6.);
+
+    float stepSize = 4.;
+
+    vec2 origin = vec2(id/(1./(CELL_SIZE*stepSize)));
+
+
+
+    if (st == 0.) {
+        f = vec2(1., 0.);
+        center = vec2(0.);
+    } else if (st == 1.) {
+        f = vec2(0., -1);
+        center = vec2(1., 0.);
+    } else if (st == 2.) {
+        f = vec2(-1., 0.);
+        center = vec2(1., -1);
+    } else if (st == 3.) {
+        f = vec2(0., 1.);
+        center = vec2(0., -1);
+    }
+    //  else if (st == 4.) {
+    //     f = vec2(0., 1.);
+    //     center = vec2(0., 0.);
+    // } else if (st == 5.) {
+    //     f = vec2(1., 0.);
+    //     center = vec2(0., 1);
+    // }
+
+    center = origin + center * CELL_SIZE * stepSize;
+
+    center += f*fract(t)*CELL_SIZE * stepSize;
+
+    camera.x = center.x;
+    camera.y = center.y;
+
+
+
+    // camera.z = (sin(iTime) * .5 + .5) * .3;
+    // camera.y = sin(iTime/2.)*CELL_SIZE;
+    // camera.x = cos(iTime/2.)*CELL_SIZE;
+    // camera.x = sin(iTime/2.)*CELL_SIZE;
+    // camera.z = 3.;
+    float verticalA = 1.0;
+    float horizA = 0.;
+    horizA = t*2.; //PI/2.;// * (f.x - f.y);// + f.x*PI/2.;
+
+    // horizA += atan(camera.x, camera.y);
+
+    // horizA += PI/4.;//(mouse.x - .5) * PI * 2.;
+
+    // horizA += sin(iTime)*(PI/8.);
+
+    verticalA = 1. - (sin(t*4.)*.05 + .03);
+
+    // camera.rotation = sin(iTime) * PI/4.;
 
     camera.horizontalAngle = horizA;
     camera.verticalAngle = verticalA;
@@ -522,6 +594,7 @@ void setupCamera() {
     camera.x = 0.;
     camera.y = 0.;
     camera.z = 0.;
+    camera.rotation = 0.;
     scriptCamera();
 }
 
@@ -549,9 +622,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoords) {
     }
 
     float zoom = .5;
+    vec3 up = vec3(0., 1., 0.);
+    up.xy *= rot2d(PI / 2. + camera.rotation);
 
     vec3 f = normalize(lookat - ro);
-    vec3 r = normalize(cross(vec3(0., 1., 0.), f));
+    vec3 r = normalize(cross(up, f));
     vec3 u = cross(f, r);
 
     vec3 c = ro + f * zoom;
@@ -566,6 +641,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoords) {
 
         if (objId == OBJ_FLOOR) {
             col += floorTexture(tr.p, tr.q1);
+        } else if (objId == OBJ_CAMERA) {
+            col += mix(vec3(0., 0., 1.), vec3(1., 0., 0.), (.7 + tr.dist.p.y*10.));
         } else {
             col += getBuildingTexture(tr);
         }
