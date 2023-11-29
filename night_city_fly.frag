@@ -788,7 +788,7 @@ vec2 getCameraIterationPosition(float iteration) {
     return round(vec2((n - .5) * m, (fract(n*113.43) - .5) * m));
 }
 
-vec2 cameraNextPosition() {
+vec3 cameraNextPosition() {
     float t = iTime * CAMERA_TIME_SCALE;
 
     vec2 center = vec2(.0);
@@ -824,13 +824,13 @@ vec2 cameraNextPosition() {
 
     center = prevPosition + f;
 
-    return center;
+    return vec3(center, iteration);
 }
 
 void scriptCamera() {
     float t = iTime / 18.;
 
-    vec2 nextPosition = cameraNextPosition();
+    vec3 nextPosition = cameraNextPosition();
 
     camera.x = nextPosition.x;
     camera.y = nextPosition.y;
@@ -844,6 +844,19 @@ void scriptCamera() {
     verticalA = 1. - (sin(t*8.)*.02 + .01);
 
     camera.rotation = sin(iTime) * PI/64.;
+
+    float n = n21(vec2(nextPosition.z));
+
+    float topDown = step(.5, n);
+
+    horizA  *= topDown;
+    verticalA *= topDown;
+    camera.z -= (topDown - 1.) * n/2.;
+
+    if (length(mouse.xy - .5) > .1) {
+        horizA = PI * mouse.x;
+        verticalA = PI/3. * mouse.y;
+    }
 
     camera.horizontalAngle = horizA;
     camera.verticalAngle = verticalA;
@@ -863,6 +876,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoords) {
     HALF_CELL_SIZE = CELL_SIZE / 2.;
 
     mouse = iMouse.xy/iResolution.xy;
+    if (mouse.x == 0. || mouse.y == 0.) {
+        mouse -= .5;
+    }
     isScripted = true; //!isKeyDown(Key_Shift);
 
     setupCamera();
